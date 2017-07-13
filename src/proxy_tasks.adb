@@ -6,11 +6,17 @@ with GNUTLS; use GNUTLS;
 with Wpoxy_Logger; use Wpoxy_Logger;
 with SOCKS; use SOCKS;
 with Ada.IO_Exceptions;
+with Wpoxy_Utils; use Wpoxy_Utils;
 
 package body Proxy_Tasks is
   
   Buffer_Size : constant Stream_Element_Offset := 4096;
-  Auth_OK : constant Stream_Element := 16#04#;
+  
+  procedure Copy_String(From : in String; To : out String; Len : out Natural) is
+  begin
+    Len := From'Length;
+    To(To'First..Len) := From;
+  end Copy_String;
 
   
   task body Proxyc_Task is
@@ -22,24 +28,12 @@ package body Proxy_Tasks is
     Client_Socket : Socket_Type;
     Wpoxyd_Addr : Sock_Addr_Type;
     WS, TLS : Boolean;
-    User_Auth1 : Stream_Element_Array(1..1024);
-    User_Auth_Len : Stream_Element_Offset;
-    
-    procedure Authenticate(Remote : in out Endpoint'Class;
-                           User_Auth : Stream_Element_Array) is
-      Last : Stream_Element_Offset;
-      Auth_Answer_Buf : Stream_Element_Array(1..16);
-    begin
-      --  Send the user auth.
-      Wpoxy_Log(5, "Sending user auth");
-      Send_Data(Remote, User_Auth, Last);
-      Read_Data(Remote, Auth_Answer_Buf, Last);
-      Wpoxy_Log(5, "Received answer");
-      if Last /= 1 or Auth_Answer_Buf(1) /= Auth_OK then
-        raise Authentication_Error with "Auth Error";
-      end if;
-    end Authenticate;
-    
+    User_Auth_Copy : String(1..128);
+    User_Auth_Len : Natural := 1;
+    Host_Copy : String(1..128);
+    Host_Len : Natural := 1;
+    Resource_Copy : String(1..128);
+    Resource_Len : Natural := 1;
     Mode : Wpoxyc_Mode;
     Port_Forward_Address : Sock_Addr_Type;
     
@@ -47,22 +41,22 @@ package body Proxy_Tasks is
     select
       accept Start_SOCKS(Client : Socket_Type;
                          Remote_Address : Sock_Addr_Type;
-                         User_Auth : Stream_Element_Array;
+                         User_Auth, Resource, Host : String;
                          Use_TLS, Use_WS : Boolean) do
         Wpoxy_Log(4, "Start SOCKS task");
         Client_Socket := Client;
         WS := Use_WS;
         TLS := Use_TLS;
         Wpoxyd_Addr := Remote_Address;
-        User_Auth_Len := User_Auth'Last;
-        User_Auth1(1..User_Auth_Len) :=
-          User_Auth(User_Auth'First..User_Auth_Len);
         Mode := SOCKS_Server;
+        Copy_String(User_Auth, User_Auth_Copy, User_Auth_Len);
+        Copy_String(Host, Host_Copy, Host_Len);
+        Copy_String(Resource, Resource_Copy, Resource_Len);
       end Start_SOCKS;
     or
       accept Start_Forward(Client : Socket_Type;
                            Remote_Address, Forward_Address : Sock_Addr_Type;
-                           User_Auth : Stream_Element_Array;
+                           User_Auth, Resource, Host : String;
                            Use_TLS, Use_WS : Boolean) do
         Wpoxy_Log(4, "Start forwarding task");
         Client_Socket := Client;
@@ -70,10 +64,10 @@ package body Proxy_Tasks is
         TLS := Use_TLS;
         Wpoxyd_Addr := Remote_Address;
         Port_Forward_Address := Forward_Address;
-        User_Auth_Len := User_Auth'Last;
-        User_Auth1(1..User_Auth_Len) :=
-          User_Auth(User_Auth'First..User_Auth_Len);
         Mode := Port_Forward;
+        Copy_String(User_Auth, User_Auth_Copy, User_Auth_Len);
+        Copy_String(Host, Host_Copy, Host_Len);
+        Copy_String(Resource, Resource_Copy, Resource_Len);
       end Start_Forward;
     end select;
     begin
@@ -103,9 +97,11 @@ package body Proxy_Tasks is
       Wpoxy_Log(3, "Connected to Wpoxyd");
       declare
         Remote_Endpoint : Endpoint'Class
-          := Make_Endpoint(Remote_Socket, TLS, WS, Init_Client);
+          := Make_Client_Endpoint(Remote_Socket, TLS, WS,
+                                  User_Auth_Copy(1..User_Auth_Len),
+                                  Resource_Copy(1..Resource_Len),
+                                  Host_Copy(1..Host_Len));
       begin
-        Authenticate(Remote_Endpoint, User_Auth1(1..User_Auth_Len));
         Send_Data(Remote_Endpoint, SOCKS_Data(SOCKS_Data'First..Last), Last);
         Wpoxy_Log(5, "Waiting for SOCKS response");
         Read_Data(Remote_Endpoint, SOCKS_Data, Last);
@@ -137,6 +133,10 @@ package body Proxy_Tasks is
            Wpoxy_Log(1, "Certificate error on endpoint");
            Shutdown_Socket(Client_Socket);
            Shutdown(Remote_Endpoint);
+         when Authentication_Error =>
+           Wpoxy_Log(1, "Failed to authenticate");
+           Shutdown(Remote_Endpoint);
+           Shutdown_Socket(Client_Socket);
       end;
     exception
        when SOCKS_Parse_Error =>
@@ -147,24 +147,10 @@ package body Proxy_Tasks is
 
 
   task body Proxyd_Task is
-    procedure Authenticate(Client : in out Endpoint'Class;
-                        User_Auth : Stream_Element_Array) is
-      Auth_Buffer : Stream_Element_Array(1..512);
-      Last : Stream_Element_Offset;
-    begin
-      Wpoxy_Log(4, "Authenticating");
-      Read_Data(Client, Auth_Buffer, Last);
-      if Last /= User_Auth'Last or
-        Auth_Buffer(1..Last) /= User_Auth then
-        raise Authentication_Error with "Failed to authenticate";
-      end if;
-      Wpoxy_Log(5, "Auth OK, Sending ans");
-      Auth_Buffer(1) := Auth_OK;
-      Send_Data(Client, Auth_Buffer(1..1), Last);
-    end Authenticate;
     
     Buffer : Stream_Element_Array(1..1024);
-    User_Auth_Len : Stream_Element_Offset;
+    User_Auth_Copy : String(1..128);
+    User_Auth_Len : Natural;
     Last : Stream_Element_Offset;
     Req_Addr : Sock_Addr_Type;
     Protocol : SOCKS_Protocol;
@@ -173,7 +159,7 @@ package body Proxy_Tasks is
     
   begin
     accept Start(Wpoxyc_Socket : Socket_Type;
-                 User_Auth : Stream_Element_Array;
+                 User_Auth : String;
                  Use_WS, Use_TLS : Boolean) do
       if Use_TLS then
         Wpoxy_Log(2, "Started TLS Proxyd_Task");
@@ -183,17 +169,16 @@ package body Proxy_Tasks is
       WS := Use_WS;
       TLS := Use_TLS;
       Local_Socket := Wpoxyc_Socket;
-      Buffer(1..User_Auth'Last) := User_Auth(User_Auth'First..User_Auth'Last);
-      User_Auth_Len := User_Auth'Last;
+      Copy_String(User_Auth, User_Auth_Copy, User_Auth_Len);
     end Start;
     begin
       declare
         Remote_Socket : Socket_Type;
         Wpoxyc_Endpoint : Endpoint'Class
-          := Make_Endpoint(Local_Socket, TLS, WS, Init_Server);
+          := Make_Server_Endpoint(Local_Socket,
+                                  TLS, WS,
+                                  User_Auth_Copy(1..User_Auth_Len));
       begin
-        Authenticate(Wpoxyc_Endpoint, Buffer(1..User_Auth_Len));
-        Wpoxy_Log(3, "Authenticated!");
         Read_Data(Wpoxyc_Endpoint, Buffer, Last);
         Parse_SOCKS_Req(Buffer, Req_Addr, Protocol);
         --  Try to connect to the remote
@@ -239,23 +224,24 @@ package body Proxy_Tasks is
       Endpoint_Side := Endp'Access;
       Direction := Dir;
     end Start;
-    if Direction = Socket_To_Endpoint then
-      loop
-        Receive_Socket(Socket_Side, Data, Last);
-        Wpoxy_Log(5, "Socket_To_Endpoint received " & Last'Img & " bytes");
-        exit when Last = Data'First - 1;
-        Send_Data(Endpoint_Side.all, Data(Data'First..Last), Last);
-        Wpoxy_Log(5, "Socket_To_Endpoint sent " & Last'Img & " bytes");
-      end loop;
-    else
-      loop
-        Read_Data(Endpoint_Side.all, Data, Last);
-        Wpoxy_Log(5, "Endpoint_To_Socket received " & Last'Img & " bytes");
-        exit when Last = Data'First - 1;
-        Send_Socket(Socket_Side, Data(Data'First..Last), Last);
-        Wpoxy_Log(5, "Endpoint_To_Socket sent " & Last'Img & " bytes");
-      end loop;
-    end if;
+    case Direction is
+       when Socket_To_Endpoint =>
+         loop
+           Receive_Socket(Socket_Side, Data, Last);
+           Wpoxy_Log(5, "Socket_To_Endpoint received " & Last'Img & " bytes");
+           exit when Last = Data'First - 1;
+           Send_Data(Endpoint_Side.all, Data(Data'First..Last), Last);
+           Wpoxy_Log(5, "Socket_To_Endpoint sent " & Last'Img & " bytes");
+         end loop;
+       when Endpoint_To_Socket =>
+         loop
+           Read_Data(Endpoint_Side.all, Data, Last);
+           Wpoxy_Log(5, "Endpoint_To_Socket received " & Last'Img & " bytes");
+           exit when Last = Data'First - 1;
+           Send_Socket(Socket_Side, Data(Data'First..Last), Last);
+           Wpoxy_Log(5, "Endpoint_To_Socket sent " & Last'Img & " bytes");
+         end loop;
+    end case;
     Wpoxy_Log(5, "Shutting down " & Image(Current_Task));
     Shutdown_Socket(Socket_Side);
     Shutdown(Endpoint_Side.all);

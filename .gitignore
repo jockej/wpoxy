@@ -3,3 +3,15 @@
 
 # Ada Library Information
 *.ali
+
+# Ignore libconfig.adb, it's created at configure time from libconfig.templ
+src/libconfig.adb
+
+# Ignore the executables
+wpoxy[cd]
+
+obj/
+
+Makefile
+COPYING
+INSTALL

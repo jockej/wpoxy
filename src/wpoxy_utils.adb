@@ -64,5 +64,10 @@ package body Wpoxy_Utils is
     end loop;
     return Ret;
   end To_Base64;
-    
+  
+  function To_Base64(Source : String) return String is
+  begin
+    return To_String(To_Base64(Source));
+  end To_Base64;
+  
 end Wpoxy_Utils;

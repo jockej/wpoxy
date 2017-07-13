@@ -91,7 +91,8 @@ package body Libconfig is
     --  For libconfig < 1.5
     --  pragma Import(C, C_Func, "config_lookup_from");
     --  For libconfig >= 1.5
-    pragma Import(C, C_Func, "config_setting_lookup");
+    --  pragma Import(C, C_Func, "config_setting_lookup");
+    pragma Import(C, C_Func, $LIBCONFIG_SETTING_LOOKUP);
     Addr : Setting_Type_Ptr := C_Func(Setting, C.To_C(Path));
   begin
     if Addr = null then
@@ -228,12 +229,12 @@ package body Libconfig is
     return C;
   end Make_Config;
   
-  procedure Free_Config is new Ada.Unchecked_Deallocation(Object => Config_Type,
-                                                          Name => Config_Type_Ptr);
-  
   procedure Destroy_Config(Config : in out Config_Type_Ptr) is
     procedure C_Func(Config : Config_Type_Ptr);
     pragma Import(C, C_Func, "config_destroy");
+    procedure Free_Config is new
+      Ada.Unchecked_Deallocation(Object => Config_Type,
+                                 Name => Config_Type_Ptr);
   begin
     C_Func(Config);
     Free_Config(Config);

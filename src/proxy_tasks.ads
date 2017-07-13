@@ -12,11 +12,11 @@ package Proxy_Tasks is
   task type Proxyc_Task is
     entry Start_SOCKS(Client : Socket_Type;
                       Remote_Address : Sock_Addr_Type;
-                      User_Auth : Stream_Element_Array;
+                      User_Auth, Resource, Host : String;
                       Use_TLS, Use_WS : Boolean);
     entry Start_Forward(Client : Socket_Type;
                         Remote_Address, Forward_Address : Sock_Addr_Type;
-                        User_Auth : Stream_Element_Array;
+                        User_Auth, Resource, Host : String;
                         Use_TLS, Use_WS : Boolean);
   end Proxyc_Task;
 
@@ -24,7 +24,7 @@ package Proxy_Tasks is
 
   task type Proxyd_Task is
     entry Start(Wpoxyc_Socket : Socket_Type;
-                User_Auth : Stream_Element_Array;
+                User_Auth : String;
                 Use_WS, Use_TLS : Boolean);
   end Proxyd_Task;
 
@@ -38,6 +38,4 @@ package Proxy_Tasks is
                 Dir : Proxy_Direction);
   end Proxy;
   
-  Authentication_Error : exception;
-
 end Proxy_Tasks;

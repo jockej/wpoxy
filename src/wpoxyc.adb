@@ -24,19 +24,19 @@ with Libconfig; use Libconfig;
 with Endpoints;
 
 procedure Wpoxyc is
-  
+
   type Listen_Socket_Type(Mode : Wpoxyc_Mode := SOCKS_Server ) is
     record
       Socket : Socket_Type;
       Listen_Address : Sock_Addr_Type;
       case Mode is
-         when Port_Forward => 
+         when Port_Forward =>
            Forward_Address : Sock_Addr_Type;
          when SOCKS_Server =>
            null;
       end case;
   end record;
-  
+
   type Listen_Socket_Arr is array(Positive range <>) of Listen_Socket_Type;
 
   procedure Init_Sockets(Sockets : in out Listen_Socket_Arr) is
@@ -48,7 +48,7 @@ procedure Wpoxyc is
       Listen_Socket(Sockets(I).Socket);
     end loop;
   end Init_Sockets;
-  
+
   function Make_Sockets(Config : Config_Type_Ptr) return Listen_Socket_Arr is
     Ports, Port : Setting_Type_Ptr;
     Num_Ports : Natural;
@@ -60,7 +60,7 @@ procedure Wpoxyc is
     end if;
     declare
       Listen_Sock_Addr, Forward_Sock_Addr : Sock_Addr_Type;
-      Mode_Setting : Setting_Type_Ptr; 
+      Mode_Setting : Setting_Type_Ptr;
       Arr : Listen_Socket_Arr(1..Num_Ports);
       Mode : Wpoxyc_Mode;
     begin
@@ -74,7 +74,7 @@ procedure Wpoxyc is
         else
           raise Config_Error with "Invalid 'mode' setting";
         end if;
-          
+
         Listen_Sock_Addr.Addr :=
           Inet_Addr(Lookup_String(Config, "listen_address"));
         Listen_Sock_Addr.Port :=
@@ -85,7 +85,7 @@ procedure Wpoxyc is
           Forward_Sock_Addr.Port :=
             Port_Type(Get_Int(Lookup(Port, "forward_port")));
         end if;
-        
+
         if Mode = SOCKS_Server then
           Arr(I) := (Mode => SOCKS_Server,
                      Socket => No_Socket,
@@ -95,21 +95,20 @@ procedure Wpoxyc is
                      Socket => No_Socket,
                      Listen_Address => Listen_Sock_Addr,
                      Forward_Address => Forward_Sock_Addr);
-        end if;          
+        end if;
       end loop;
       return Arr;
     end;
   end Make_Sockets;
-  
-  
+
   Dummy_Sockets : Socket_Set_Type;
   Selector : Selector_Type;
   Status : Selector_Status;
   Listen_Set, Selector_Set : Socket_Set_Type;
-  Use_WS, Use_TLS : Boolean;
   Remote_Address : Sock_Addr_Type;
-  
-  procedure Print_Listen_Sockets(Arr : Listen_Socket_Arr) is
+
+  procedure Print_Listen_Sockets(Arr : Listen_Socket_Arr;
+                                Use_TLS, Use_WS : Boolean) is
   begin
     Put_Line("Wpoxyc Listening on:");
     for I in Arr'Range loop
@@ -130,51 +129,71 @@ procedure Wpoxyc is
     end if;
     New_Line;
   end Print_Listen_Sockets;
-  
+
   procedure Print_Usage is
   begin
     Put_Line("Usage: wpoxyc -c file [-d num] [-h|--help]");
   end Print_Usage;
-  
+
+  procedure Print_Help is
+  begin
+    Print_Usage;
+    Put_Line("-c <configuration file>");
+    Put_Line("-d <debuglevel>");
+    Put_Line("-h, --help: Print this message");
+  end Print_Help;
+
   Config : Config_Type_Ptr;
   Got_Config : Boolean := False;
+  Level : Log_Level := 1;
 begin
-  
+
   loop
     case Getopt("c: -help h d:") is
        when 'c' =>
          Config := Make_Config(Parameter);
          Got_Config := True;
        when 'h' =>
-         Print_Usage;
+         Print_Help;
          return;
        when '-' =>
-         if Full_Switch = "--help" then
-           Print_Usage;
+         if Full_Switch = "-help" then
+           Print_Help;
            return;
          end if;
        when 'd' =>
-         Set_Log_Level(Integer'Value(Parameter));
+         begin
+           Level := Integer'Value(Parameter);
+         exception
+            when Constraint_Error =>
+              Put_Line("Illegal debug level!");
+              return;
+         end;
        when others =>
          exit;
     end case;
   end loop;
-  
+
+  Set_Log_Level(Level);
+
   if not Got_Config then
+    Print_Usage;
     return;
   end if;
-  
-  declare
-    Sockets : Listen_Socket_Arr := Make_Sockets(Config);  
-    User_Auth : Stream_Element_Array
-      := To_Base64(Lookup_String(Config, "user_auth"));
-    Trust_File : String := Lookup_String(Config, "trustfile");
 
+  declare
+    Sockets : Listen_Socket_Arr := Make_Sockets(Config);
+    User_Auth : String := Lookup_String(Config, "user_auth");
+    Trust_File : String := Lookup_String(Config, "trustfile");
+    Remote_Host : String := Lookup_String(Config, "remote_address");
+    Use_WS : Boolean := Lookup_Bool(Config, "ws");
+    Use_TLS : Boolean := Lookup_Bool(Config, "tls");
+
+    Resource : String :=
+      (if Use_WS then Lookup_String(Config, "remote_resource") else "");
   begin
-    Remote_Address.Addr := Inet_Addr(Lookup_String(Config, "remote_address"));
+    Remote_Address.Addr := Addresses(Get_Host_By_Name(Remote_Host));
     Remote_Address.Port := Port_Type(Lookup_Int(Config, "remote_port"));
-    Use_WS := Lookup_Bool(Config, "ws");
-    Use_TLS := Lookup_Bool(Config, "tls");
 
     Endpoints.Set_Trust_File(Trust_File);
     Set_TLS_Debug(2);
@@ -182,10 +201,10 @@ begin
     for I in Sockets'Range loop
       Set(Listen_Set, Sockets(I).Socket);
     end loop;
-    Print_Listen_Sockets(Sockets);
+    Print_Listen_Sockets(Sockets, Use_TLS, Use_WS);
     Create_Selector(Selector);
 
-      Mainloop: 
+      Mainloop:
     loop
       declare
         Client_Socket : Socket_Type;
@@ -204,15 +223,13 @@ begin
                 Con_Task.Start_Forward(Client_Socket,
                                        Remote_Address,
                                        Sockets(I).Forward_Address,
-                                       User_Auth,
-                                       Use_TLS,
-                                       Use_WS);
+                                       User_Auth, Resource, Remote_Host,
+                                       Use_TLS, Use_WS);
               else
                 Con_Task.Start_SOCKS(Client_Socket,
                                      Remote_Address,
-                                     User_Auth,
-                                     Use_TLS,
-                                     Use_WS);
+                                     User_Auth, Resource, Remote_Host,
+                                     Use_TLS, Use_WS);
               end if;
               Proxyc_Coord.Register(Con_Task);
             end;

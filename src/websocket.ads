@@ -12,9 +12,12 @@ package Websocket is
                                   Last : out Stream_Element_Offset);
   
   procedure Make_Server_Handshake(Buffer : in out Stream_Element_Array;
-                                  Last : out Stream_Element_Offset);
+                                  Last : in out Stream_Element_Offset;
+                                  User_Auth : String;
+                                  Valid : out Boolean);
   
-  --  procedure Check_Server_Response(Buffer : 
+  function Server_Response_Valid(Answer : Stream_Element_Array;
+                                 Key : String) return Boolean;
   
   function Get_Key return String;
   
@@ -26,5 +29,10 @@ package Websocket is
   procedure From_WS(WS_Data : in Stream_Element_Array;
                     Data : out Stream_Element_Array;
                     Last : out Stream_Element_Offset);
+  
+  procedure Make_Close_Frame(Buffer : out Stream_Element_Array;
+                             Last : out Stream_Element_Offset);
+  
+  function Is_Close_Frame(Buffer : Stream_Element_Array) return Boolean;
   
 end Websocket;
