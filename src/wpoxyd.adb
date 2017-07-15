@@ -64,6 +64,18 @@ procedure Wpoxyd is
     end;
   end Make_Sockets;
 
+  function Have_TLS(Sockets : Listen_Socket_Arr) return Boolean is
+    R : Boolean := False;
+  begin
+    for Sock of Sockets loop
+      if Sock.Use_TLS then
+        R := True;
+        exit;
+      end if;
+    end loop;
+    return R;
+  end Have_TLS;
+
   procedure Print_Listen_Sockets(Arr : Listen_Socket_Arr) is
   begin
     Put_Line("Wpoxyd Listening on:");
@@ -138,13 +150,17 @@ begin
   declare
     Sockets : Listen_Socket_Arr := Make_Sockets(Config);
     User_Auth : String := Lookup_String(Config, "user_auth");
-    Cert_File : String := Lookup_String(Config, "certfile");
-    Key_File : String := Lookup_String(Config, "keyfile");
-
   begin
-    Set_TLS_Debug(2);
-    Endpoints.Init_Cert_Key(Cert_File, Key_File);
     Init_Sockets(Sockets);
+    if Have_TLS(Sockets) then
+      declare
+        Cert_File : String := Lookup_String(Config, "certfile");
+        Key_File : String := Lookup_String(Config, "keyfile");
+      begin
+        Set_TLS_Debug(2);
+        Endpoints.Init_Cert_Key(Cert_File, Key_File);
+      end;
+    end if;
     for I in Sockets'Range loop
       Set(Listen_Set, Sockets(I).Socket);
     end loop;
