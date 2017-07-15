@@ -11,6 +11,11 @@ if test x"$HAVE_GNATPREP" = x"no" ; then
   AC_MSG_ERROR([Could not find gnatprep])
 fi
 
+AC_CHECK_PROG([HAVE_GPRBUILD], [gprbuild], [yes], [no])
+if test x"$HAVE_GPRBUILD" = x"no" ; then
+  AC_MSG_ERROR([gprbuild is needed to build])
+fi
+
 dnl Check for libconfig. Annoyingly, a function changed name in 1.5 (without a
 dnl deprecated alias). Right now, the version in FreeBSD ports is 1.4 but the
 dnl version in the Arch Linux repos is 1.5. So support both.
