@@ -5,6 +5,12 @@ dnl Check for GNUTLS
 AC_SEARCH_LIBS([gnutls_init], [gnutls], [],
   AC_MSG_ERROR([Could not find GNUTLS library]))
 
+
+AC_CHECK_PROG([HAVE_GNATPREP], [gnatprep], [yes], [no])
+if test x"$HAVE_GNATPREP" = x"no" ; then
+  AC_MSG_ERROR([Could not find gnatprep])
+fi
+
 dnl Check for libconfig. Annoyingly, a function changed name in 1.5 (without a
 dnl deprecated alias). Right now, the version in FreeBSD ports is 1.4 but the
 dnl version in the Arch Linux repos is 1.5. So support both.
