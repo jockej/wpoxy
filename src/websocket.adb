@@ -255,8 +255,8 @@ package body Websocket is
       "Connection: Upgrade" & CRLF &
       "Sec-WebSocket-Protocol: wpoxy" & CRLF &
       "Sec-WebSocket-Version: 13" & CRLF &
-      "Basic-Auth: " & To_Base64(User_Auth) & CRLF &
-      "Sec-WebSocket-Key: " & Key & CRLF;
+      "Authorization: Basic " & To_Base64(User_Auth) & CRLF &
+      "Sec-WebSocket-Key: " & Key & CRLF & CRLF;
   begin
     To_Stream_Element_Array(Request, Buffer, Last);
   end Make_Client_Handshake;
@@ -297,10 +297,10 @@ package body Websocket is
       "HTTP/1.1 101 Switching Protocols" & CRLF &
       "Upgrade: websocket" & CRLF &
       "Connection: Upgrade" & CRLF &
-      "Sec-WebSocket-Accept: " & Build_Accept(Key) & CRLF;
+      "Sec-WebSocket-Accept: " & Build_Accept(Key) & CRLF & CRLF;
       
     Fail_Response : constant String := 
-      "HTTP/1.1 403 Connection Refused" & CRLF;
+      "HTTP/1.1 403 Connection Refused" & CRLF & CRLF;
     
     function Valid_Handshake return Boolean is
     begin
@@ -315,7 +315,8 @@ package body Websocket is
     end Valid_Handshake;
   begin
     if Valid_Handshake and then
-      Get_Header_Field(Request, "Basic-Auth") = To_Base64(User_Auth) then
+      Get_Header_Field(Request, "Authorization") =
+      "Basic " & To_Base64(User_Auth) then
       Wpoxy_Log(4, "Handshake OK");
       Valid := True;
       To_Stream_Element_Array(OK_Resp, Buffer, Last);
