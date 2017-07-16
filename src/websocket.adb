@@ -14,14 +14,14 @@ with Wpoxy_Logger; use Wpoxy_Logger;
 with Wpoxy_Utils; use Wpoxy_Utils;
 
 package body Websocket is
-  
+
   WSGUID :constant String :=
     "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  
+
   subtype Opcode_Type is Integer range 0..(2**4 - 1);
   subtype Payload_Len_Type is Integer range 0..(2**7 - 1);
   subtype Bit is Integer range 0..1;
-  
+
   type WS_Header is
      record
        FIN, RSV1, RSV2, RSV3 : Bit;
@@ -29,7 +29,7 @@ package body Websocket is
        Mask : Bit;
        Payload_Len : Payload_Len_Type;
      end record;
-  
+
   for WS_Header use record
     FIN at 0 range 0..0;
     RSV1 at 0 range 1..1;
@@ -39,27 +39,27 @@ package body Websocket is
     Mask at 0 range 8..8;
     Payload_Len at 0 range 9..15;
   end record;
-  
+
   for WS_Header'Size use 16;
-  
+
   subtype Header_Bytes is Stream_Element_Array(1..2);
   function Header_To_Bytes is
     new Ada.Unchecked_Conversion(Source => WS_Header, Target => Header_Bytes);
   function Bytes_To_Header is
     new Ada.Unchecked_Conversion(Source => Header_Bytes, Target => WS_Header);
-  
+
   subtype Mask_Bytes is Stream_Element_Array(0..3);
   function Mask_To_Bytes is
     new Ada.Unchecked_Conversion(Source => Mask_Type, Target => Mask_Bytes);
   function Mask_From_Bytes is
     new Ada.Unchecked_Conversion(Source => Mask_Bytes, Target => Mask_Type);
-  
+
   package Random_Mask is new Ada.Numerics.Discrete_Random(Mask_Type);
   package Random_Stream_Element is new
     Ada.Numerics.Discrete_Random(Stream_Element);
-  
+
   Mask_Gen : Random_Mask.Generator;
-  
+
   procedure Mask_Array(Source : in Stream_Element_Array;
                        Target : out Stream_Element_Array;
                        Mask : Mask_Type) is
@@ -79,7 +79,7 @@ package body Websocket is
     --      Target(Idx * 4 + 1..Idx * 4 + 4) := Mask_To_Bytes(Source_Mask xor Mask);
     --    end;
     --  end loop;
-    
+
     for I in 0..Source'Length - 1 loop
       declare
         SI : Stream_Element_Offset := Stream_Element_Offset(I);
@@ -90,12 +90,12 @@ package body Websocket is
       end;
     end loop;
   end Mask_Array;
-  
+
   procedure To_WS(Data : in Stream_Element_Array;
                   WS_Data : out Stream_Element_Array;
                   Last : out Stream_Element_Offset;
                   Mask : Boolean) is
-    
+
     function To_BE16(N : Natural) return Stream_Element_Array is
       HB : Stream_Element := Stream_Element(N / 2**8);
       LB : Stream_Element := Stream_Element(N - ((N / 2**8) * 2**8));
@@ -105,7 +105,7 @@ package body Websocket is
         A(2) := LB;
       end return;
     end To_BE16;
-    
+
     function To_BE64(N : Natural) return Stream_Element_Array is
       B1 : Stream_Element := 0;
       B2 : Stream_Element := 0;
@@ -127,7 +127,7 @@ package body Websocket is
         A(8) := B8;
       end return;
     end To_BE64;
-    
+
     Payload_Len : Natural := Data'Length;
     Payload_Offs : Stream_Element_Offset := Stream_Element_Offset(Payload_Len);
     First : Stream_Element_Offset := WS_Data'First;
@@ -149,7 +149,7 @@ package body Websocket is
       WS_Data(Current..Current + 7) := To_BE64(Payload_Len);
       Current := Current + 8;
     end if;
-    
+
     if Mask then
       declare
         New_Mask : Mask_Type := Random_Mask.Random(Mask_Gen);
@@ -159,7 +159,7 @@ package body Websocket is
         Header.Mask := 1;
         Mask_Array(Data, WS_Data(Current..Current + Payload_Offs - 1), New_Mask);
       end;
-    else 
+    else
       WS_Data(Current..Current + Payload_Offs - 1) := Data;
     end if;
     WS_Data(WS_Data'First..WS_Data'First + 1) := Header_To_Bytes(Header);
@@ -169,18 +169,18 @@ package body Websocket is
        Wpoxy_Log(5, "In To_WS:");
        Wpoxy_Log(5, Exception_Name(Error) & ": " & Exception_Message(Error));
   end To_WS;
-    
+
   procedure From_WS(WS_Data : in Stream_Element_Array;
                     Data : out Stream_Element_Array;
                     Last : out Stream_Element_Offset) is
-    
+
     function From_BE16(A : Stream_Element_Array) return Stream_Element_Offset is
       HB : Stream_Element_Offset := Stream_Element_Offset(A(A'First));
       LB : Stream_Element_Offset := Stream_Element_Offset(A(A'First + 1));
     begin
       return HB * 2**8 + LB;
     end From_BE16;
-    
+
     function From_BE64(A : Stream_Element_Array) return Stream_Element_Offset is
       B1 : Stream_Element_Offset := Stream_Element_Offset(A(A'First));
       B2 : Stream_Element_Offset := Stream_Element_Offset(A(A'First + 1));
@@ -194,7 +194,7 @@ package body Websocket is
       return B1 * 2**56 + B2 * 2**48 + B3 * 2**40 + B4 * 2**32 +
         B5 * 2**24 + B6 * 2**16 + B7 * 2**8 + B8;
     end From_BE64;
-    
+
     Header : constant WS_Header := Bytes_To_Header(WS_Data(1..2));
     Payload_Len : constant Natural := Header.Payload_Len;
     Current : Stream_Element_Offset := WS_Data'First + 2;
@@ -211,7 +211,7 @@ package body Websocket is
       Payload_Offs := From_BE64(WS_Data(Current..Current + 7));
       Current := Current + 8;
     end if;
-    
+
     if Header.Mask = 1 then
       Mask := Mask_From_Bytes(WS_Data(Current..Current + 3));
       Current := Current + 4;
@@ -229,7 +229,7 @@ package body Websocket is
        Wpoxy_Log(5, Exception_Name(Error) & ": " & Exception_Message(Error));
 
   end From_WS;
-  
+
   Nonce_Gen : Random_Stream_Element.Generator;
   function Get_Key return String is
     Str : String(1..64);
@@ -242,9 +242,9 @@ package body Websocket is
     Base64.Encode(Arr, Str, Last);
     return Str(1..Last);
   end Get_Key;
-  
+
   CRLF : constant String := ASCII.CR & ASCII.LF;
-  
+
   procedure Make_Client_Handshake(Host, Resource, User_Auth, Key : String;
                                   Buffer : out Stream_Element_Array;
                                   Last : out Stream_Element_Offset) is
@@ -260,7 +260,7 @@ package body Websocket is
   begin
     To_Stream_Element_Array(Request, Buffer, Last);
   end Make_Client_Handshake;
-  
+
   function Build_Accept(Key : String) return String is
     Accept_Str : String := Key & WSGUID;
     Accept_SHA1 : String := GNAT.SHA1.Digest(Accept_Str);
@@ -271,7 +271,7 @@ package body Websocket is
                   Accept_Base64, SLast);
     return Accept_Base64(1..SLast);
   end Build_Accept;
-  
+
   function Get_Header_Field(Request, Field : String) return String is
       Re : constant Pattern_Matcher :=
         Compile(Field & ": (.*)\r\n");
@@ -283,25 +283,25 @@ package body Websocket is
       end if;
       return Trim(Request(Matches(1).First..Matches(1).Last), Both);
     end Get_Header_Field;
-  
+
   procedure Make_Server_Handshake(Buffer : in out Stream_Element_Array;
                                   Last : in out Stream_Element_Offset;
                                   User_Auth : String;
                                   Valid : out Boolean) is
-    
+
     Request : String := To_String(Buffer(Buffer'First..Last));
-    
+
     Key : String := Get_Header_Field(Request, "Sec-WebSocket-Key");
-    
+
     OK_Resp : String :=
       "HTTP/1.1 101 Switching Protocols" & CRLF &
       "Upgrade: websocket" & CRLF &
       "Connection: Upgrade" & CRLF &
       "Sec-WebSocket-Accept: " & Build_Accept(Key) & CRLF & CRLF;
-      
-    Fail_Response : constant String := 
+
+    Fail_Response : constant String :=
       "HTTP/1.1 403 Connection Refused" & CRLF & CRLF;
-    
+
     function Valid_Handshake return Boolean is
     begin
       if Get_Header_Field(Request, "Sec-WebSocket-Version") = "13" and then
@@ -322,7 +322,7 @@ package body Websocket is
       To_Stream_Element_Array(OK_Resp, Buffer, Last);
     else
       Wpoxy_Log(4, "Invalid handshake");
-      Wpoxy_Log(5, "Header says: " & Get_Header_Field(Request, "Basic-Auth") &
+      Wpoxy_Log(5, "Header says: " & Get_Header_Field(Request, "Authorization") &
                   " User_Auth says: " & To_Base64(User_Auth));
       Valid := False;
       To_Stream_Element_Array(Fail_Response, Buffer, Last);
@@ -333,15 +333,15 @@ package body Websocket is
        Wpoxy_Log(2, Exception_Message(Error));
        To_Stream_Element_Array(Fail_Response, Buffer, Last);
   end Make_Server_Handshake;
-  
+
   function Server_Response_Valid(Answer : Stream_Element_Array;
                                  Key : String) return Boolean is
-    
+
     Answer_Str : String := To_String(Answer);
     Acc : String := Get_Header_Field(Answer_Str,
                                      "Sec-WebSocket-Accept");
     Ref_Acc : String := Build_Accept(Key);
-    
+
     function Get_HTML_Status return String is
       Re : constant Pattern_Matcher := Compile("HTTP/1.1 ([0-9]{3})");
       Matches : Match_Array(1..1);
@@ -357,7 +357,7 @@ package body Websocket is
   begin
     return Acc = Ref_Acc and Get_HTML_Status = "101";
   end Server_Response_Valid;
-  
+
   procedure Make_Close_Frame(Buffer : out Stream_Element_Array;
                              Last : out Stream_Element_Offset) is
     Header : WS_Header := (FIN => 1,
@@ -367,12 +367,12 @@ package body Websocket is
     Last := Buffer'First + 1;
     Buffer(Buffer'First..Last) := Header_To_Bytes(Header);
   end Make_Close_Frame;
-  
+
   function Is_Close_Frame(Buffer : Stream_Element_Array) return Boolean is
     Header : WS_Header :=
       Bytes_To_Header(Buffer(Buffer'First..Buffer'First + 1));
   begin
     return Header.FIN = 1 and Header.Opcode = 8;
   end Is_Close_Frame;
-  
+
 end Websocket;
