@@ -17,7 +17,7 @@ package body Wpoxy_Logger is
   
   procedure Wpoxy_Log(Level : Log_Level; Msg : String) is
   begin
-    if Level < Current_Level then
+    if Level > Current_Level then
       return;
     end if;
     Put(Image(Current_Task) & ": ");
@@ -30,7 +30,7 @@ package body Wpoxy_Logger is
                       Data : Stream_Element_Array) is
     Value : Integer;
   begin
-    if Level < Current_Level then
+    if Level > Current_Level then
       return;
     end if;
     Wpoxy_Log(Level, Msg);
