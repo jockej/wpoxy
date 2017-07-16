@@ -330,6 +330,8 @@ package body Websocket is
   exception
      when Error : Websock_Parse_Exception =>
        Wpoxy_Log(2, "Error parsing websocket request: " & Request);
+       Wpoxy_Log(2, Exception_Message(Error));
+       To_Stream_Element_Array(Fail_Response, Buffer, Last);
   end Make_Server_Handshake;
   
   function Server_Response_Valid(Answer : Stream_Element_Array;
