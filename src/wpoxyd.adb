@@ -114,6 +114,7 @@ procedure Wpoxyd is
   Config : Config_Type_Ptr;
   Level : Log_Level := 1;
 begin
+  Getopt_Loop:
   loop
     case Getopt("c: -help h d:") is
        when 'c' =>
@@ -136,9 +137,9 @@ begin
               return;
          end;
        when others =>
-         exit;
+         exit Getopt_Loop;
     end case;
-  end loop;
+  end loop Getopt_Loop;
 
   Set_Log_Level(Level);
 
@@ -169,7 +170,7 @@ begin
       Print_Listen_Sockets(Sockets);
     end if;
 
-      Mainloop:
+    Mainloop:
     loop
       declare
         Client_Socket : Socket_Type;
