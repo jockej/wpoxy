@@ -329,6 +329,9 @@ package body Endpoints is
         if Last = Close_Frame'First - 1 then
           Wpoxy_Log(5, "Remote has already closed connection!");
         end if;
+      exception
+         when Error : GNAT.Sockets.Socket_Error =>
+           if 
       end;
     end if;
     if not T.Closed then

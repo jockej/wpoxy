@@ -143,10 +143,12 @@ package body Websocket is
       Wpoxy_Log(5, "Setting Header.Payload_Len to 126");
       Header.Payload_Len := 126;
       WS_Data(Current..Current + 1) := To_BE16(Payload_Len);
+      Wpoxy_Log(5, "Real payload len of 2 bytes: " & Payload_Len'Img);
       Current := Current + 2;
     else
       Header.Payload_Len := 127;
       WS_Data(Current..Current + 7) := To_BE64(Payload_Len);
+      Wpoxy_Log(5, "Real payload len of 8 bytes: " & Payload_Len'Img);
       Current := Current + 8;
     end if;
 
@@ -164,6 +166,11 @@ package body Websocket is
     end if;
     WS_Data(WS_Data'First..WS_Data'First + 1) := Header_To_Bytes(Header);
     Last := Current + Payload_Offs - 1;
+    declare
+      Size_Bytes : Stream_Element_Offset := Last - First;
+    begin
+      Wpoxy_Log(5, "To_WS first to last is " & Size_Bytes'Img);
+    end;
   exception
      when Error: others =>
        Wpoxy_Log(5, "In To_WS:");
@@ -192,42 +199,62 @@ package body Websocket is
       B8 : Stream_Element_Offset := Stream_Element_Offset(A(A'First + 7));
     begin
       return B1 * 2**56 + B2 * 2**48 + B3 * 2**40 + B4 * 2**32 +
-        B5 * 2**24 + B6 * 2**16 + B7 * 2**8 + B8;
+       B5 * 2**24 + B6 * 2**16 + B7 * 2**8 + B8;
     end From_BE64;
-
-    Header : constant WS_Header := Bytes_To_Header(WS_Data(1..2));
-    Payload_Len : constant Natural := Header.Payload_Len;
-    Current : Stream_Element_Offset := WS_Data'First + 2;
+    
+    Read_From : Stream_Element_Offset := WS_Data'First;
+    Write_Pos : Stream_Element_Offset := Data'First;
     Payload_Offs : Stream_Element_Offset;
     Mask : Mask_Type;
+    
   begin
-    Wpoxy_Log(5, "From_WS: Got " & Payload_Len'Img & " as payload len");
-    if Payload_Len < 126 then
-      Payload_Offs := Stream_Element_Offset(Payload_Len);
-    elsif Payload_Len = 126 then
-      Payload_Offs := From_BE16(WS_Data(Current..Current + 1));
-      Current := Current + 2;
-    else
-      Payload_Offs := From_BE64(WS_Data(Current..Current + 7));
-      Current := Current + 8;
-    end if;
+    Read_Frames:
+    while Read_From < WS_Data'Last loop
+      declare
+        --  Get the WS header
+        Header : constant WS_Header :=
+         Bytes_To_Header(WS_Data(Read_From..Read_From + 1));
+        Payload_Len : constant Natural := Header.Payload_Len;
+        Read_Pos : Stream_Element_Offset := Read_From + 2;
+      begin
+        Wpoxy_Log(5, "From_WS: Got" & Payload_Len'Img & " as payload len");
+        if Payload_Len < 126 then
+          Payload_Offs := Stream_Element_Offset(Payload_Len);
+        elsif Payload_Len = 126 then
+          Payload_Offs := From_BE16(WS_Data(Read_Pos..Read_Pos + 1));
+          Read_Pos := Read_Pos + 2;
+        else
+          Payload_Offs := From_BE64(WS_Data(Read_Pos..Read_Pos + 7));
+          Read_Pos := Read_Pos + 8;
+        end if;
 
-    if Header.Mask = 1 then
-      Mask := Mask_From_Bytes(WS_Data(Current..Current + 3));
-      Current := Current + 4;
-      Mask_Array(WS_Data(Current..Current + Payload_Offs - 1),
-                 Data(Data'First..Data'First + Payload_Offs - 1),
-                 Mask);
-    else
-      Data(Data'First..Data'First + Payload_Offs - 1) :=
-        WS_Data(Current..Current + Payload_Offs - 1);
-    end if;
-    Last := Data'First + Payload_Offs - 1;
+        if Header.Mask = 1 then
+          Mask := Mask_From_Bytes(WS_Data(Read_Pos..Read_Pos + 3));
+          Read_Pos := Read_Pos + 4;
+          Wpoxy_Log(5, "Read_Pos is:" & Read_Pos'Img & ". Write_Pos is:"
+                     & Write_Pos'Img & ". Payload_Offs is: " &
+                     Payload_Offs'Img);
+          Wpoxy_Log(5, "WS_Data'Last is:" & Ws_Data'Last'Img);
+          Mask_Array(WS_Data(Read_Pos..Read_Pos + Payload_Offs - 1),
+                     Data(Write_Pos..Write_Pos + Payload_Offs - 1),
+                     Mask);
+        else
+          Data(Write_Pos..Write_Pos + Payload_Offs - 1) :=
+           WS_Data(Read_Pos..Read_Pos + Payload_Offs - 1);
+        end if;
+        Read_From := Read_Pos + Payload_Offs;
+        Write_Pos := Write_Pos + Payload_Offs;
+        Wpoxy_Log(5, "Read_From is now:" & Read_From'Img & ". Write_Pos is now:"
+          & Write_Pos'Img);
+      end;
+    end loop Read_Frames;
+    --  Last := Data'First + Payload_Offs - 1;
+    Wpoxy_Log(5, "Read all WS frames");
+    Last := Write_Pos - 1;
   exception
      when Error: others =>
        Wpoxy_Log(5, "In From_WS:");
        Wpoxy_Log(5, Exception_Name(Error) & ": " & Exception_Message(Error));
-
   end From_WS;
 
   Nonce_Gen : Random_Stream_Element.Generator;

@@ -224,32 +224,34 @@ package body Proxy_Tasks is
       Endpoint_Side := Endp'Access;
       Direction := Dir;
     end Start;
-    case Direction is
-       when Socket_To_Endpoint =>
-         loop
-           Receive_Socket(Socket_Side, Data, Last);
-           Wpoxy_Log(5, "Socket_To_Endpoint received " & Last'Img & " bytes");
-           exit when Last = Data'First - 1;
-           Send_Data(Endpoint_Side.all, Data(Data'First..Last), Last);
-           Wpoxy_Log(5, "Socket_To_Endpoint sent " & Last'Img & " bytes");
-         end loop;
-       when Endpoint_To_Socket =>
-         loop
-           Read_Data(Endpoint_Side.all, Data, Last);
-           Wpoxy_Log(5, "Endpoint_To_Socket received " & Last'Img & " bytes");
-           exit when Last = Data'First - 1;
-           Send_Socket(Socket_Side, Data(Data'First..Last), Last);
-           Wpoxy_Log(5, "Endpoint_To_Socket sent " & Last'Img & " bytes");
-         end loop;
-    end case;
+    begin
+      case Direction is
+         when Socket_To_Endpoint =>
+           loop
+             Receive_Socket(Socket_Side, Data, Last);
+             exit when Last = Data'First - 1;
+             Send_Data(Endpoint_Side.all, Data(Data'First..Last), Last);
+             Wpoxy_Log(5, "Socket_To_Endpoint sent " & Stream_Element_Offset(Last - 1)'Img & " bytes");
+           end loop;
+         when Endpoint_To_Socket =>
+           loop
+             Read_Data(Endpoint_Side.all, Data, Last);
+             Wpoxy_Log(5, "Endpoint_To_Socket received " & Last'Img & " bytes");
+             exit when Last = Data'First - 1;
+             Send_Socket(Socket_Side, Data(Data'First..Last), Last);
+             Wpoxy_Log(5, "Endpoint_To_Socket sent " & Last'Img & " bytes");
+           end loop;
+      end case;
+    exception
+       when Error: Ada.IO_Exceptions.End_Error | GNAT.Sockets.Socket_Error =>
+         Wpoxy_Log(5, "Peer closed connection");
+         Shutdown_Socket(Socket_Side);
+         Shutdown(Endpoint_Side.all);
+    end;
     Wpoxy_Log(5, "Shutting down " & Image(Current_Task));
     Shutdown_Socket(Socket_Side);
     Shutdown(Endpoint_Side.all);
   exception
-     when Error: Ada.IO_Exceptions.End_Error | GNAT.Sockets.Socket_Error =>
-       Wpoxy_Log(5, "Peer closed connection");
-       Shutdown_Socket(Socket_Side);
-       Shutdown(Endpoint_Side.all);
      when Error: others =>
        Wpoxy_Log(2, "Unhandled exception in a proxy task:");
        Wpoxy_Log(2, Exception_Name(Error) & ": " & Exception_Message(Error));

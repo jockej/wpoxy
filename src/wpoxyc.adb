@@ -196,7 +196,7 @@ begin
     Remote_Address.Port := Port_Type(Lookup_Int(Config, "remote_port"));
 
     Endpoints.Set_Trust_File(Trust_File);
-    Set_TLS_Debug(2);
+    Set_TLS_Debug(6);
     Init_Sockets(Sockets);
     for I in Sockets'Range loop
       Set(Listen_Set, Sockets(I).Socket);
