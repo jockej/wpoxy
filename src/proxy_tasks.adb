@@ -9,16 +9,16 @@ with Ada.IO_Exceptions;
 with Wpoxy_Utils; use Wpoxy_Utils;
 
 package body Proxy_Tasks is
-  
-  Buffer_Size : constant Stream_Element_Offset := 4096;
-  
+
+  Buffer_Size : constant Stream_Element_Offset := 65536;
+
   procedure Copy_String(From : in String; To : out String; Len : out Natural) is
   begin
     Len := From'Length;
     To(To'First..Len) := From;
   end Copy_String;
 
-  
+
   task body Proxyc_Task is
     SOCKS_Data : Stream_Element_Array(1..1024);
     Protocol : SOCKS_Protocol;
@@ -36,7 +36,7 @@ package body Proxy_Tasks is
     Resource_Len : Natural := 1;
     Mode : Wpoxyc_Mode;
     Port_Forward_Address : Sock_Addr_Type;
-    
+
   begin
     select
       accept Start_SOCKS(Client : Socket_Type;
@@ -90,7 +90,7 @@ package body Proxy_Tasks is
         end if;
         Wpoxy_Log(4, "SOCKS request valid!");
       end if;
-      
+
       --  Attempt to connect to our remote.
       Create_Socket(Remote_Socket);
       Connect_Socket(Remote_Socket, Wpoxyd_Addr);
@@ -147,7 +147,7 @@ package body Proxy_Tasks is
 
 
   task body Proxyd_Task is
-    
+
     Buffer : Stream_Element_Array(1..1024);
     User_Auth_Copy : String(1..128);
     User_Auth_Len : Natural;
@@ -156,7 +156,7 @@ package body Proxy_Tasks is
     Protocol : SOCKS_Protocol;
     WS, TLS : Boolean;
     Local_Socket : Socket_Type;
-    
+
   begin
     accept Start(Wpoxyc_Socket : Socket_Type;
                  User_Auth : String;
@@ -190,7 +190,7 @@ package body Proxy_Tasks is
         else
           Send_SOCKS_Response(Wpoxyc_Endpoint, SOCKS5_OK, Req_Addr);
         end if;
-        
+
         declare
           From_Wpoxyc : Proxy;
           To_Wpoxyc : Proxy;
