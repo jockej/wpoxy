@@ -201,12 +201,12 @@ package body Websocket is
       return B1 * 2**56 + B2 * 2**48 + B3 * 2**40 + B4 * 2**32 +
        B5 * 2**24 + B6 * 2**16 + B7 * 2**8 + B8;
     end From_BE64;
-    
+
     Read_From : Stream_Element_Offset := WS_Data'First;
     Write_Pos : Stream_Element_Offset := Data'First;
     Payload_Offs : Stream_Element_Offset;
     Mask : Mask_Type;
-    
+
   begin
     Read_Frames:
     while Read_From < WS_Data'Last loop
@@ -228,6 +228,7 @@ package body Websocket is
           Read_Pos := Read_Pos + 8;
         end if;
 
+        Wpoxy_Log(5, "Real payload len: " & Payload_Offs'Img);
         if Header.Mask = 1 then
           Mask := Mask_From_Bytes(WS_Data(Read_Pos..Read_Pos + 3));
           Read_Pos := Read_Pos + 4;
@@ -245,17 +246,18 @@ package body Websocket is
         Read_From := Read_Pos + Payload_Offs;
         Write_Pos := Write_Pos + Payload_Offs;
         Wpoxy_Log(5, "Read_From is now:" & Read_From'Img & ". Write_Pos is now:"
-          & Write_Pos'Img);
+                   & Write_Pos'Img);
       end;
     end loop Read_Frames;
     --  Last := Data'First + Payload_Offs - 1;
     Wpoxy_Log(5, "Read all WS frames");
     Last := Write_Pos - 1;
-  exception
-     when Error: others =>
-       Wpoxy_Log(5, "In From_WS:");
-       Wpoxy_Log(5, Exception_Name(Error) & ": " & Exception_Message(Error));
-  end From_WS;
+  --  exception
+  --     when Error: others =>
+  --       Wpoxy_Log(5, "In From_WS:");
+  --       Wpoxy_Log(5, Exception_Name(Error) & ": " & Exception_Message(Error));
+  end
+   From_WS;
 
   Nonce_Gen : Random_Stream_Element.Generator;
   function Get_Key return String is

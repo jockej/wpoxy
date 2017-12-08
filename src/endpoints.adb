@@ -3,6 +3,7 @@ with GNUTLS; use GNUTLS;
 with Wpoxy_Logger; use Wpoxy_Logger;
 with Ada.Streams; use Ada.Streams;
 with Ada.Task_Identification; use Ada.Task_Identification;
+with Ada.Exceptions; use Ada.Exceptions;
 with Interfaces.C;
 
 with Ada.Integer_Text_IO; use Ada.Integer_Text_IO;
@@ -11,23 +12,23 @@ with Websocket; use Websocket;
 with Wpoxy_Utils; use Wpoxy_Utils;
 
 package body Endpoints is
-  
+
   Creds : Certificate_Credentials;
-  
+
   procedure Set_Trust_File(Trust_File : String) is
   begin
     Certificate_Set_X509_Trust_File(Creds, Trust_File, X509_Fmt_PEM);
   end Set_Trust_File;
-  
+
   procedure Init_Cert_Key(Cert_File, Key_File : String) is
   begin
     Certificate_Set_X509_Key_File(Creds, Cert_File, Key_File, X509_Fmt_PEM);
     --  Certificate_Set_DH_Params(Creds
   end Init_Cert_Key;
-  
+
   Auth_OK : constant Stream_Element := 16#04#;
   Auth_Failed : constant Stream_Element := 16#F3#;
-  
+
   function Make_Client_Endpoint(Socket : Socket_Type;
                                 Use_TLS, Use_WS : Boolean;
                                 User_Auth, Resource, Host : String
@@ -115,7 +116,7 @@ package body Endpoints is
       end return;
     end if;
   end Make_Client_Endpoint;
-  
+
   function Make_Server_Endpoint(Socket : Socket_Type;
                          Use_TLS, Use_WS : Boolean;
                          User_Auth : String) return Endpoint'Class is
@@ -267,7 +268,7 @@ package body Endpoints is
       T.Closed := True;
     end if;
   end Shutdown;
-  
+
   overriding procedure Read_Data(From : in out Plain_Endpoint;
                                  Buffer : out Stream_Element_Array;
                                  Last : out Stream_Element_Offset) is
@@ -328,10 +329,13 @@ package body Endpoints is
         Send_Socket(T.Socket, Close_Frame, Last);
         if Last = Close_Frame'First - 1 then
           Wpoxy_Log(5, "Remote has already closed connection!");
+        --  else try to read to see if we got a response?
+        --    Read_Socket(
         end if;
       exception
          when Error : GNAT.Sockets.Socket_Error =>
-           if 
+           Wpoxy_Log(5, "Exception sending close frame: " &
+                      Exception_Name(Error) & ": " & Exception_Message(Error));
       end;
     end if;
     if not T.Closed then
@@ -339,5 +343,5 @@ package body Endpoints is
       T.Closed := True;
     end if;
   end Shutdown;
-  
+
 end Endpoints;
