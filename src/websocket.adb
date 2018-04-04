@@ -2,6 +2,7 @@ with Ada.Streams; use Ada.Streams;
 with Ada.Numerics.Discrete_Random;
 with Ada.Unchecked_Conversion;
 with Ada.Strings; use Ada.Strings;
+with Ada.Strings.Equal_Case_Insensitive;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Exceptions; use Ada.Exceptions;
 
@@ -332,15 +333,34 @@ package body Websocket is
       "HTTP/1.1 403 Connection Refused" & CRLF & CRLF;
 
     function Valid_Handshake return Boolean is
+      Ret : Boolean := True;
     begin
-      if Get_Header_Field(Request, "Sec-WebSocket-Version") = "13" and then
-        Get_Header_Field(Request, "Sec-WebSocket-Protocol") = "wpoxy" and then
-        Get_Header_Field(Request, "Upgrade") = "websocket" and then
-        Get_Header_Field(Request, "Connection") = "Upgrade" then
-        return True;
-      else
-        return False;
+      if not Equal_Case_Insensitive(Get_Header_Field(Request,
+                                                     "Sec-WebSocket-Version"),
+                                    "13") then
+        Wpoxy_Log(3, "Wrong websocket version");
+        Ret := False;
       end if;
+      
+      if not Equal_Case_Insensitive(Get_Header_Field(Request,
+                                                     "Sec-WebSocket-Protocol"),
+                                    "wpoxy") then
+        Wpoxy_Log(3, "Wrong websocket protocol");
+        Ret := False;
+      end if;
+
+      if not Equal_Case_Insensitive(Get_Header_Field(Request, "Upgrade"),
+                                    "websocket") then
+        Wpoxy_Log(3, "Wrong upgrade");
+        Ret := False;
+      end if;
+
+      if not Equal_Case_Insensitive(Get_Header_Field(Request, "Connection"),
+                                "Upgrade") then
+        Wpoxy_Log(3, "Wrong connection type");
+        Ret := False;
+      end if;
+      return Ret;
     end Valid_Handshake;
   begin
     if Valid_Handshake and then
